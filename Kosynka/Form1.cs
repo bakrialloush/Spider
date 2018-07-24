@@ -23,10 +23,13 @@ namespace Kosynka
         int accent = -1, accent2 = -1, accentLen = 1;
 
         int oldex, oldey, x, y;    // координаты перемещаемой фигуры
-        int candOldPlace, oldPlace, newPlace;    // каждое место имеет свой код от 0 до 11
+        int candOldPlace;          // каждое место имеет свой код от 0 до 11
         bool dragging = false;
         bool animation = true;     // красивое перемещение карт, плавное
         bool animation2 = false;   // между собой там идет определение
+
+        List<int> oldPlace, newPlace, countRemember;  // кол-во переложенных карт (вместо памятного буфера)
+        List<bool> needToClose;  // скрыть карту при отмене хода
 
         List<Card>[] stacks;       // ну угадайте что это
         List<Card> rest;
@@ -35,8 +38,6 @@ namespace Kosynka
 
         Random rnd = new Random();
         int[] used;                // нужно при растасовке карт
-        int countRemember;         // кол-во переложенных карт на последнем ходе (вместо памятного буфера)
-        bool needToClose = false;  // скрыть карту при отмене хода
         int num = 0;               // номер стека, для которого проводится анимация  
         int counter = 0;           // счетчик (для таймера4)
         Card naglCard;             // карта которая будет пока отображаться вместо короля (для таймера4)
@@ -65,6 +66,11 @@ namespace Kosynka
 
             rest = new List<Card>();
             buffer = new List<Card>();
+
+            oldPlace = new List<int>();
+            newPlace = new List<int>();
+            countRemember = new List<int>();
+            needToClose = new List<bool>();
 
             used = new int[104];
             for (int i = 0; i < 104; ++i)
@@ -267,13 +273,15 @@ namespace Kosynka
                 if (IsIn(e.X, e.Y, wOffset + (wOffset + wCard) * i, offset + hOffset + hShift * j, wCard, hCard))
                 {
                     if (stacks[i].Count == 0 || condNorm(stacks[i][stacks[i].Count-1], buffer[0])){
-                        countRemember = buffer.Count;   // для отмены хода
-                        oldPlace = candOldPlace;
-                        newPlace = i;
+                        countRemember.Add(buffer.Count);   // для отмены хода
+                        oldPlace.Add(candOldPlace);
+                        newPlace.Add(i);
                         ToNewPlace();
 
+                        int last = oldPlace.Count - 1;
+
                         // проверить открылась ли карта
-                        needToClose = oldPlace < 10 && stacks[oldPlace].Count > 0 && stacks[oldPlace][stacks[oldPlace].Count-1].opened == false;
+                        needToClose.Add(oldPlace[last] < 10 && stacks[oldPlace[last]].Count > 0 && stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened == false);
 
                         отменитьХодToolStripMenuItem.Enabled = true;
 
@@ -299,12 +307,12 @@ namespace Kosynka
 
         void GetBack()   // возврат из буфера на место
         {
-            Put(oldPlace);
+            Put(oldPlace[oldPlace.Count - 1]);
         }
 
         void ToNewPlace()  // кладем на новое место
         {
-            Put(newPlace);
+            Put(newPlace[newPlace.Count - 1]);
         }
 
         void AddCardsToStacksFromRest(){
@@ -361,6 +369,10 @@ namespace Kosynka
                         counter = 0;
                         timer4.Start();
                         отменитьХодToolStripMenuItem.Enabled = false;
+                        oldPlace.Clear();
+                        newPlace.Clear();
+                        countRemember.Clear();
+                        needToClose.Clear();
                         подсказкаToolStripMenuItem.Enabled = false;
 
                         // в таймере надо карты по одной направлять к выходу
@@ -470,8 +482,10 @@ namespace Kosynka
                     }
                     else
                     {
-                        oldPlace = 10;
-                        newPlace = 10;
+                        oldPlace.Add(10);//oldPlace = 10;
+                        newPlace.Add(10);//newPlace = 10;
+                        countRemember.Add(0);
+                        needToClose.Add(false);
                         отменитьХодToolStripMenuItem.Enabled = true;
                         AddCardsToStacksFromRest();
                         Invalidate();
@@ -564,6 +578,11 @@ namespace Kosynka
             rest.Clear();
             buffer.Clear();
 
+            oldPlace.Clear();
+            newPlace.Clear();
+            countRemember.Clear();
+            needToClose.Clear();
+
             for (int i = 0; i < 104; ++i)
             {
                 used[i] = i % 52;
@@ -572,7 +591,7 @@ namespace Kosynka
             Shuffle();
             FillStacksAndList();
 
-            //подсказкаToolStripMenuItem.Enabled = true;
+            подсказкаToolStripMenuItem.Enabled = true;
             
             timer1.Start();
             отменитьХодToolStripMenuItem.Enabled = false;
@@ -639,10 +658,13 @@ namespace Kosynka
 
         private void отменитьХодToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            отменитьХодToolStripMenuItem.Enabled = false;
+            accent = -1;
+            accent2 = -1;
+
+            int last = oldPlace.Count - 1;
 
             // если просто нажали на магазин
-            if (oldPlace == 10)
+            if (oldPlace[last] == 10)
             {
                 ++quanOfAdds;
                 ReturnInAdd();
@@ -650,22 +672,22 @@ namespace Kosynka
             else
             {
                 // скрыть открытую карту из стека
-                if (needToClose)
+                if (needToClose[last])
                 {
-                    stacks[oldPlace][stacks[oldPlace].Count - 1].opened = false;
+                    stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened = false;
                 }
 
                 // переложить countRemember карт с newPlace на oldPlace
 
                 // I. переложить countRemember карт с newPlace на buffer
 
-                for (int i = 0; i < countRemember; i++)
+                for (int i = 0; i < countRemember[last]; i++)
                 {
                     // сначала удаляем из нового места
                     Card card;
-                    
-                    card = stacks[newPlace][stacks[newPlace].Count - 1];
-                    stacks[newPlace].RemoveAt(stacks[newPlace].Count - 1);
+
+                    card = stacks[newPlace[last]][stacks[newPlace[last]].Count - 1];
+                    stacks[newPlace[last]].RemoveAt(stacks[newPlace[last]].Count - 1);
                     
                     // затем в буфер
                     buffer.Add(card);
@@ -673,15 +695,25 @@ namespace Kosynka
 
                 // II. переложить countRemember карт с buffer на oldPlace
 
-                for (int i = 0; i < countRemember; i++)
+                for (int i = 0; i < countRemember[last]; i++)
                 {
                     // сначала удаляем из буфера
                     Card card = buffer[buffer.Count - 1];
                     buffer.RemoveAt(buffer.Count - 1);
 
                     // затем возвращаем в старое
-                    stacks[oldPlace].Add(card);
+                    stacks[oldPlace[last]].Add(card);
                 }
+            }
+
+            oldPlace.RemoveAt(last);
+            newPlace.RemoveAt(last);
+            countRemember.RemoveAt(last);
+            needToClose.RemoveAt(last);
+
+            if (oldPlace.Count == 0)
+            {
+                отменитьХодToolStripMenuItem.Enabled = false;
             }
 
             Invalidate();
