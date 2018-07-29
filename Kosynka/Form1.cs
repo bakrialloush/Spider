@@ -658,65 +658,68 @@ namespace Kosynka
 
         private void отменитьХодToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            accent = -1;
-            accent2 = -1;
-
-            int last = oldPlace.Count - 1;
-
-            // если просто нажали на магазин
-            if (oldPlace[last] == 10)
+            if (!dragging)
             {
-                ++quanOfAdds;
-                ReturnInAdd();
-            }
-            else
-            {
-                // скрыть открытую карту из стека
-                if (needToClose[last])
+                accent = -1;
+                accent2 = -1;
+
+                int last = oldPlace.Count - 1;
+
+                // если просто нажали на магазин
+                if (oldPlace[last] == 10)
                 {
-                    stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened = false;
+                    ++quanOfAdds;
+                    ReturnInAdd();
+                }
+                else
+                {
+                    // скрыть открытую карту из стека
+                    if (needToClose[last])
+                    {
+                        stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened = false;
+                    }
+
+                    // переложить countRemember карт с newPlace на oldPlace
+
+                    // I. переложить countRemember карт с newPlace на buffer
+
+                    for (int i = 0; i < countRemember[last]; i++)
+                    {
+                        // сначала удаляем из нового места
+                        Card card;
+
+                        card = stacks[newPlace[last]][stacks[newPlace[last]].Count - 1];
+                        stacks[newPlace[last]].RemoveAt(stacks[newPlace[last]].Count - 1);
+
+                        // затем в буфер
+                        buffer.Add(card);
+                    }
+
+                    // II. переложить countRemember карт с buffer на oldPlace
+
+                    for (int i = 0; i < countRemember[last]; i++)
+                    {
+                        // сначала удаляем из буфера
+                        Card card = buffer[buffer.Count - 1];
+                        buffer.RemoveAt(buffer.Count - 1);
+
+                        // затем возвращаем в старое
+                        stacks[oldPlace[last]].Add(card);
+                    }
                 }
 
-                // переложить countRemember карт с newPlace на oldPlace
+                oldPlace.RemoveAt(last);
+                newPlace.RemoveAt(last);
+                countRemember.RemoveAt(last);
+                needToClose.RemoveAt(last);
 
-                // I. переложить countRemember карт с newPlace на buffer
-
-                for (int i = 0; i < countRemember[last]; i++)
+                if (oldPlace.Count == 0)
                 {
-                    // сначала удаляем из нового места
-                    Card card;
-
-                    card = stacks[newPlace[last]][stacks[newPlace[last]].Count - 1];
-                    stacks[newPlace[last]].RemoveAt(stacks[newPlace[last]].Count - 1);
-                    
-                    // затем в буфер
-                    buffer.Add(card);
+                    отменитьХодToolStripMenuItem.Enabled = false;
                 }
 
-                // II. переложить countRemember карт с buffer на oldPlace
-
-                for (int i = 0; i < countRemember[last]; i++)
-                {
-                    // сначала удаляем из буфера
-                    Card card = buffer[buffer.Count - 1];
-                    buffer.RemoveAt(buffer.Count - 1);
-
-                    // затем возвращаем в старое
-                    stacks[oldPlace[last]].Add(card);
-                }
+                Invalidate();
             }
-
-            oldPlace.RemoveAt(last);
-            newPlace.RemoveAt(last);
-            countRemember.RemoveAt(last);
-            needToClose.RemoveAt(last);
-
-            if (oldPlace.Count == 0)
-            {
-                отменитьХодToolStripMenuItem.Enabled = false;
-            }
-
-            Invalidate();
         }
 
         private void подсказкаToolStripMenuItem_Click(object sender, EventArgs e)
