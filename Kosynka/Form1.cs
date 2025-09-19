@@ -1,60 +1,59 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Kosynka
 {
     public partial class Form1 : Form
     {
-        public const int wCard = 100, hCard = 140;                  // размер карты
-        public const int wOffset = wCard / 4, hOffset = hCard / 8;  // расстояния между картами
-        public const int wShift = wCard / 5, hShift = hCard / 5; 
-        public const int wField = (wCard + wOffset) * 10 + wOffset, hField = (int)((hCard + hOffset) * 5.5), wWindow = wField + 17, offset = 25, hWindow = hField + 40 + offset;  // учитываем края
+        public const int wCard = 100, hCard = 140;                  // card size
+        public const int wOffset = wCard / 4, hOffset = hCard / 8;  // distance between cards
+        public const int wShift = wCard / 5, hShift = hCard / 5;
+        // calculating edges
+        public const int wField = (wCard + wOffset) * 10 + wOffset;
+        public const int hField = (int)((hCard + hOffset) * 5.5);
+        public const int wWindow = wField + 17;
+        public const int offset = 25;
+        public const int hWindow = hField + 40 + offset;
 
         public int time = 0;
         public int variant = 0;
         bool win = false;
         int accent = -1, accent2 = -1, accentLen = 1;
 
-        int oldex, oldey, x, y;    // координаты перемещаемой фигуры
-        int candOldPlace;          // каждое место имеет свой код от 0 до 11
+        int oldex, oldey, x, y;    // coordinates of the moving figure
+        int candOldPlace;          // each place has its own code from 0 to 11
         bool dragging = false;
-        bool animation = true;     // красивое перемещение карт, плавное
-        bool animation2 = false;   // между собой там идет определение
+        bool animation = true;     // smooth card movement
+        bool animation2 = false;   // internal determination
 
-        List<int> oldPlace, newPlace, countRemember;  // кол-во переложенных карт (вместо памятного буфера)
-        List<bool> needToClose;  // скрыть карту при отмене хода
+        private readonly List<int> oldPlace, newPlace, countRemember;  // number of moved cards (instead of a memory buffer)
+        private readonly List<bool> needToClose;  // hide card when undoing move
+        private readonly List<Card>[] stacks;       // guess what this is
+        private readonly List<Card> rest;
 
-        List<Card>[] stacks;       // ну угадайте что это
-        List<Card> rest;
+        private readonly List<Card> buffer;         // for transfer
 
-        List<Card> buffer;         // для переноса
+        private readonly Random rnd = new Random();
+        private readonly int[] used;                // needed for card shuffling
+        int num = 0;               // stack number for animation  
+        int counter = 0;           // counter (for timer4)
+        Card naglCard;             // card temporarily displayed instead of king (for timer4)
 
-        Random rnd = new Random();
-        int[] used;                // нужно при растасовке карт
-        int num = 0;               // номер стека, для которого проводится анимация  
-        int counter = 0;           // счетчик (для таймера4)
-        Card naglCard;             // карта которая будет пока отображаться вместо короля (для таймера4)
-
-        int quanOfPiles = 0;       // кол-во собранных стопок
-        int quanOfAdds = 6;        // кол-во стопок на раскладку
-        float h = 50;              // цветовой параметр
+        int quanOfPiles = 0;       // number of completed piles
+        int quanOfAdds = 6;        // number of piles to deal
+        float h = 50;              // color parameter
         Color winColor;
-        bool returnWas = false;    // как было в отмене хода
+        bool returnWas = false;    // as in undo move
 
         public Form1()
         {
             InitializeComponent();
-            this.BackColor = Color.FromArgb(0, 140, 70);
+            BackColor = Color.FromArgb(0, 140, 70);
             winColor = HsvToRgb(h, 1f, 1f);
-            this.Width = wWindow;
-            this.Height = hWindow;
+            Width = wWindow;
+            Height = hWindow;
 
             stacks = new List<Card>[10];
 
@@ -82,17 +81,16 @@ namespace Kosynka
             FillStacksAndList();
         }
 
-        public void swap(ref int a, ref int b)
+        public void Swap(ref int a, ref int b)
         {
-            int tmp = a;
-            a = b;
-            b = tmp;
+            (b, a) = (a, b);
         }
 
-        private void Shuffle(){
+        private void Shuffle()
+        {
             for (int i = 0; i < 104; ++i)
             {
-                swap(ref used[i], ref used[rnd.Next(0, 104)]);
+                Swap(ref used[i], ref used[rnd.Next(0, 104)]);
             }
         }
 
@@ -102,7 +100,8 @@ namespace Kosynka
 
             for (int i = 0; i < 10; ++i)
             {
-                for (int j = 0; j < 5 - (i + 6) / 10; ++j){
+                for (int j = 0; j < 5 - (i + 6) / 10; ++j)
+                {
                     /*bool visible = j == 4 - (i + 6) / 10;*/
                     stacks[i].Add(new Card(2, used[index] % 13 + 1, false/*visible*/));
                     ++index;
@@ -116,12 +115,12 @@ namespace Kosynka
             }
 
             AddCardsToStacksFromRest();
-            отменитьХодToolStripMenuItem.Enabled = false;
+            undoMoveToolStripMenuItem.Enabled = false;
         }
 
-        private String GetNameOfPic(Card card)
+        private string GetNameOfPic(Card card)
         {
-            String s = ""; 
+            string s = "";
             if (card.opened)
             {
                 switch (card.suit)
@@ -141,7 +140,7 @@ namespace Kosynka
             return s;
         }
 
-        public static bool IsIn(int x, int y, int start, int start2, int len, int len2)   // находится в прямоугольнике (с учетом offset)
+        public static bool IsIn(int x, int y, int start, int start2, int len, int len2)   // is inside rectangle (with offset)
         {
             return x >= start && x <= start + len && y >= start2 && y <= start2 + len2;
         }
@@ -153,28 +152,28 @@ namespace Kosynka
             Pen yellow_pen = new Pen(Color.Yellow, 5);
             Brush win_brush = new SolidBrush(winColor);
             Font font = new Font("Arial", 48, FontStyle.Bold);
-            Image image = (Image)Kosynka.Properties.Resources.ResourceManager.GetObject("shirt" + Data.numShirt);
+            Image image = (Image)Properties.Resources.ResourceManager.GetObject("shirt" + Data.numShirt);
 
-            // отображаем карты на раскладку
+            // display cards to deal
             for (int i = 0; i < quanOfAdds; i++)
                 g.DrawImage(image, wField - wOffset - wCard - i * wShift, hField - hOffset - hCard, wCard, hCard);
 
-            // отображаем "готовых" королей
-            image = (Image)Kosynka.Properties.Resources.ResourceManager.GetObject("spades13");
+            // display "ready" kings
+            image = (Image)Properties.Resources.ResourceManager.GetObject("spades13");
             for (int i = 0; i < quanOfPiles; i++)
             {
                 g.DrawImage(image, wOffset + i * wShift, hField - hOffset - hCard, wCard, hCard);
             }
 
-            // отображаем наглую карту
+            // display temporary card
             if (naglCard != null)
             {
-                String s = GetNameOfPic(naglCard);
-                image = (Image)Kosynka.Properties.Resources.ResourceManager.GetObject(s);
+                string s = GetNameOfPic(naglCard);
+                image = (Image)Properties.Resources.ResourceManager.GetObject(s);
                 g.DrawImage(image, wOffset + quanOfPiles * wShift, hField - hOffset - hCard, wCard, hCard);
             }
-                
-            // отображаем стеки
+
+            // display stacks
             for (int i = 0; i < 10; i++)
             {
                 if (stacks[i].Count == 0)
@@ -184,30 +183,30 @@ namespace Kosynka
                 else
                 {
                     for (int j = 0; j < stacks[i].Count; j++)
-			        {
-                        String s = GetNameOfPic(stacks[i][j]);
-                        image = (Image)Kosynka.Properties.Resources.ResourceManager.GetObject(s);
+                    {
+                        string s = GetNameOfPic(stacks[i][j]);
+                        image = (Image)Properties.Resources.ResourceManager.GetObject(s);
                         g.DrawImage(image, wOffset + (wOffset + wCard) * i, offset + hOffset + hShift * j, wCard, hCard);
-			        }
+                    }
                 }
             }
 
             if (dragging || animation)
             {
-                String s;
+                string s;
 
                 for (int i = 0; i < buffer.Count; i++)
                 {
                     if (buffer[i] != null)
                     {
                         s = GetNameOfPic(buffer[i]);
-                        image = (Image)Kosynka.Properties.Resources.ResourceManager.GetObject(s);
+                        image = (Image)Properties.Resources.ResourceManager.GetObject(s);
                         g.DrawImage(image, x, y + hShift * i, wCard, hCard);
                     }
                 }
             }
 
-            // для случая подсказки
+            // for hint case
             if (accent > -1)
             {
                 if (accent < 10)
@@ -224,24 +223,24 @@ namespace Kosynka
                     g.DrawRectangle(yellow_pen, wField - wOffset - wCard - (quanOfAdds - 1) * wShift, hField - hOffset - hCard, wCard, hCard);
             }
 
-            // для случая победы
+            // for win case
             if (win)
             {
-                g.DrawString("Вы выиграли!", font, win_brush, wField / 2 - 235, hField / 2 - 30);
+                g.DrawString("You won!", font, win_brush, wField / 2 - 235, hField / 2 - 30);
             }
 
         }
 
-        private void timer1_Tick(object sender, EventArgs e)
+        private void Timer1_Tick(object sender, EventArgs e)
         {
             ++time;
-            toolStripStatusLabel1.Text = "Время: " + time;
+            toolStripStatusLabel1.Text = "Time: " + time;
         }
 
         public class Card
         {
             public int suit;   // 1 - clubs, 2 - hearts, 3 - spades, 4 - diamonds
-            public int number; // 11 - валет, 12 - дама, 13 - король
+            public int number; // 11 - Jack, 12 - Queen, 13 - King
             public bool opened;
 
             public Card(int suit, int number, bool opened = false)
@@ -252,46 +251,38 @@ namespace Kosynka
             }
         }
 
-        bool isNull(Card card)
+        bool TryStroke(MouseEventArgs e)  // try to make a move 
         {
-            return card == null;
-        }
-
-        void ClearNulls(List<Card> list)
-        {
-            list.RemoveAll(isNull);
-        }
-
-        bool TryStroke(MouseEventArgs e)  // пытаемся сделать ход 
-        {
-            // если координаты сейчас на прямоугольнике, проверяем, можно ли так, и если да, то переносим с буфера туда
-            // проверяем стеки
+            // if coordinates are now on the rectangle, check if possible, and if so, move from buffer there
+            // check stacks
             for (int i = 0; i < 10; i++)
             {
                 int j = stacks[i].Count - 1;
 
                 if (IsIn(e.X, e.Y, wOffset + (wOffset + wCard) * i, offset + hOffset + hShift * j, wCard, hCard))
                 {
-                    if (stacks[i].Count == 0 || condNorm(stacks[i][stacks[i].Count-1], buffer[0])){
-                        countRemember.Add(buffer.Count);   // для отмены хода
+                    if (stacks[i].Count == 0 || CondNorm(stacks[i][stacks[i].Count - 1], buffer[0]))
+                    {
+                        countRemember.Add(buffer.Count);   // for undo move
                         oldPlace.Add(candOldPlace);
                         newPlace.Add(i);
                         ToNewPlace();
 
                         int last = oldPlace.Count - 1;
 
-                        // проверить открылась ли карта
+                        // check if card was opened
                         needToClose.Add(oldPlace[last] < 10 && stacks[oldPlace[last]].Count > 0 && stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened == false);
 
-                        отменитьХодToolStripMenuItem.Enabled = true;
+                        undoMoveToolStripMenuItem.Enabled = true;
 
                         return true;
                     }
-                    else{
+                    else
+                    {
                         return false;
                     }
                 }
-                
+
             }
 
             return false;
@@ -305,17 +296,13 @@ namespace Kosynka
             }
         }
 
-        void GetBack()   // возврат из буфера на место
-        {
-            Put(oldPlace[oldPlace.Count - 1]);
-        }
-
-        void ToNewPlace()  // кладем на новое место
+        void ToNewPlace()  // put to new place
         {
             Put(newPlace[newPlace.Count - 1]);
         }
 
-        void AddCardsToStacksFromRest(){
+        void AddCardsToStacksFromRest()
+        {
             /*for (int i = 0; i < 10; i++)
             {
                 stacks[i].Add(rest[0]);
@@ -324,10 +311,10 @@ namespace Kosynka
             animation = true;
             num = 0;
             timer3.Start();
-            //новаяИграToolStripMenuItem.Enabled = false;
-            returnWas = отменитьХодToolStripMenuItem.Enabled;
-            отменитьХодToolStripMenuItem.Enabled = false;
-            подсказкаToolStripMenuItem.Enabled = false;
+            //newGameToolStripMenuItem.Enabled = false;
+            returnWas = undoMoveToolStripMenuItem.Enabled;
+            undoMoveToolStripMenuItem.Enabled = false;
+            hintToolStripMenuItem.Enabled = false;
         }
 
         void ReturnInAdd()
@@ -339,7 +326,7 @@ namespace Kosynka
             }
         }
 
-        void openStacksIfPossible()
+        void OpenStacksIfPossible()
         {
             for (int i = 0; i < 10; i++)
             {
@@ -350,34 +337,34 @@ namespace Kosynka
             }
         }
 
-        void canWeTakeIt()   // если можем забрать стопку, то забираем
+        void CanWeTakeIt()   // if we can take the pile, take it
         {
             for (int i = 0; i < 10; i++)
             {
                 if (stacks[i].Count >= 13 && stacks[i][stacks[i].Count - 13].opened)
                 {
-                    // формируем из них буфер и проверяем на "нормальность" =)
+                    // form buffer and check for "normality" =)
                     for (int j = 0; j < 13; j++)
                     {
                         buffer.Add(stacks[i][stacks[i].Count - 13 + j]);
                     }
 
-                    if (normBuffer())
+                    if (NormBuffer())
                     {
                         animation = true;
                         num = i;
                         counter = 0;
                         timer4.Start();
-                        отменитьХодToolStripMenuItem.Enabled = false;
+                        undoMoveToolStripMenuItem.Enabled = false;
                         oldPlace.Clear();
                         newPlace.Clear();
                         countRemember.Clear();
                         needToClose.Clear();
-                        подсказкаToolStripMenuItem.Enabled = false;
+                        hintToolStripMenuItem.Enabled = false;
 
-                        // в таймере надо карты по одной направлять к выходу
+                        // in timer, cards should be sent one by one to the exit
 
-                        // забираем карты
+                        // take cards
                         //stacks[i].RemoveRange(stacks[i].Count - 13, 13);
                     }
 
@@ -396,16 +383,16 @@ namespace Kosynka
             return false;
         }
 
-        bool condNorm(Card c1, Card c2)   // условие для буфера, чтоб можно было карты друг на друга в стеке класть
+        bool CondNorm(Card c1, Card c2)   // condition for buffer, so cards can be stacked
         {
             return c1.number - c2.number == 1;
         }
 
-        bool normBuffer()
+        bool NormBuffer()
         {
             for (int i = 0; i < buffer.Count - 1; i++)
             {
-                if (!condNorm(buffer[i], buffer[i + 1]))
+                if (!CondNorm(buffer[i], buffer[i + 1]))
                 {
                     return false;
                 }
@@ -413,7 +400,7 @@ namespace Kosynka
             return true;
         }
 
-        bool normStack(int number)
+        bool NormStack(int number)
         {
             int pos = 0;
             while (!stacks[number][pos].opened)
@@ -421,7 +408,7 @@ namespace Kosynka
 
             for (int i = pos; i < stacks[number].Count - 1; i++)
             {
-                if (!condNorm(stacks[number][i], stacks[number][i + 1]))
+                if (!CondNorm(stacks[number][i], stacks[number][i + 1]))
                 {
                     return false;
                 }
@@ -430,9 +417,9 @@ namespace Kosynka
             return true;
         }
 
-        int normStackNumber(int number)  // всегда хотя бы один элемент в стеке будет норм
+        int NormStackNumber(int number)  // there will always be at least one normal element in stack
         {
-            bool uslNorm = true;
+            bool uslNorm;
             int pos = 0;
             while (!stacks[number][pos].opened)
                 ++pos;
@@ -443,7 +430,7 @@ namespace Kosynka
 
                 for (int j = i; j < stacks[number].Count - 1; j++)
                 {
-                    if (!condNorm(stacks[number][j], stacks[number][j + 1]))
+                    if (!CondNorm(stacks[number][j], stacks[number][j + 1]))
                     {
                         uslNorm = false;
                     }
@@ -458,7 +445,7 @@ namespace Kosynka
             return stacks[number].Count - 1;
         }
 
-        bool Win()    // критерий победы
+        bool Win()    // win condition
         {
             return quanOfPiles == 8;
         }
@@ -473,12 +460,12 @@ namespace Kosynka
                 oldex = e.X;
                 oldey = e.Y;
 
-                // новая стопка раскладывается
+                // new pile is dealt
                 if (quanOfAdds > 0 && IsIn(e.X, e.Y, wField - wOffset - wCard - quanOfAdds * wShift, hField - hOffset - hCard, wCard, hCard))
                 {
                     if (IsThereOneEmptyStack())
                     {
-                        MessageBox.Show("В каждой стопке должна быть хотя бы одна карта","Сообщение");
+                        MessageBox.Show("Each pile must have at least one card", "Message");
                     }
                     else
                     {
@@ -486,13 +473,13 @@ namespace Kosynka
                         newPlace.Add(10);//newPlace = 10;
                         countRemember.Add(0);
                         needToClose.Add(false);
-                        отменитьХодToolStripMenuItem.Enabled = true;
+                        undoMoveToolStripMenuItem.Enabled = true;
                         AddCardsToStacksFromRest();
                         Invalidate();
                     }
                 }
 
-                // проверяем стеки
+                // check stacks
                 for (int i = 0; i < 10; i++)
                 {
                     for (int j = stacks[i].Count - 1; j >= 0; j--)
@@ -507,12 +494,12 @@ namespace Kosynka
                             }
 
                             candOldPlace = i;
-                            dragging = normBuffer();
-                            if (!normBuffer())
+                            dragging = NormBuffer();
+                            if (!NormBuffer())
                             {
                                 /*GetBack();*/
                                 Put(candOldPlace);
-                                buffer.Clear();    // может это поможет??? Помогло кажись
+                                buffer.Clear();    // maybe this helps??? Seems it did
                                 return;
                             }
                             x = wOffset + (wOffset + wCard) * i;
@@ -522,7 +509,7 @@ namespace Kosynka
                         }
                     }
                 }
-            }        
+            }
         }
 
         private void Form1_MouseUp(object sender, MouseEventArgs e)
@@ -531,11 +518,11 @@ namespace Kosynka
             {
                 if (!TryStroke(e))
                     Put(candOldPlace);
-                    /*GetBack();*/
+                /*GetBack();*/
                 dragging = false;
                 buffer.Clear();
-                canWeTakeIt();
-                openStacksIfPossible();
+                CanWeTakeIt();
+                OpenStacksIfPossible();
             }
 
             Invalidate();
@@ -553,7 +540,7 @@ namespace Kosynka
             }
         }
 
-        private void новаяИграToolStripMenuItem_Click(object sender, EventArgs e)
+        private void NewGameToolStripMenuItem_Click(object sender, EventArgs e)
         {
             timer2.Stop();
 
@@ -562,7 +549,7 @@ namespace Kosynka
             win = false;
             accent = -1;
             accent2 = -1;
-            quanOfPiles = 0;    
+            quanOfPiles = 0;
             quanOfAdds = 6;
             h = 50;
             winColor = HsvToRgb(h, 1f, 1f);
@@ -591,29 +578,29 @@ namespace Kosynka
             Shuffle();
             FillStacksAndList();
 
-            подсказкаToolStripMenuItem.Enabled = true;
-            
+            hintToolStripMenuItem.Enabled = true;
+
             timer1.Start();
-            отменитьХодToolStripMenuItem.Enabled = false;
+            undoMoveToolStripMenuItem.Enabled = false;
 
             Invalidate();
         }
 
-        private void выходToolStripMenuItem_Click(object sender, EventArgs e)
+        private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
         }
 
-        private void сменитьРубашкуToolStripMenuItem_Click(object sender, EventArgs e)
+        private void ChangeShirtToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Form2 Form2 = new Form2();
             Form2.ShowDialog();
             Invalidate();
         }
 
-        private void справкаToolStripMenuItem_Click(object sender, EventArgs e)
+        private void HelpToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("Пасьянс \"Паук\"\nWindows XP\n\nПрограммист: Гумеров Артур", "Справка");
+            MessageBox.Show("Solitaire \"Spider\"\nWindows XP\n\nProgrammer: Artur Gumerov", "Help");
         }
 
         static Color HsvToRgb(float h, float s, float v)
@@ -648,7 +635,7 @@ namespace Kosynka
             return Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
         }
 
-        private void timer2_Tick(object sender, EventArgs e)   // карты падают волнами
+        private void Timer2_Tick(object sender, EventArgs e)   // cards fall in waves
         {
             h += 2;
             if (h >= 360) h = 0;
@@ -656,7 +643,7 @@ namespace Kosynka
             Invalidate();
         }
 
-        private void отменитьХодToolStripMenuItem_Click(object sender, EventArgs e)
+        private void UndoMoveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (!dragging)
             {
@@ -665,7 +652,7 @@ namespace Kosynka
 
                 int last = oldPlace.Count - 1;
 
-                // если просто нажали на магазин
+                // if just clicked on the store
                 if (oldPlace[last] == 10)
                 {
                     ++quanOfAdds;
@@ -673,37 +660,37 @@ namespace Kosynka
                 }
                 else
                 {
-                    // скрыть открытую карту из стека
+                    // hide opened card from stack
                     if (needToClose[last])
                     {
                         stacks[oldPlace[last]][stacks[oldPlace[last]].Count - 1].opened = false;
                     }
 
-                    // переложить countRemember карт с newPlace на oldPlace
+                    // move countRemember cards from newPlace to oldPlace
 
-                    // I. переложить countRemember карт с newPlace на buffer
+                    // I. move countRemember cards from newPlace to buffer
 
                     for (int i = 0; i < countRemember[last]; i++)
                     {
-                        // сначала удаляем из нового места
+                        // first remove from new place
                         Card card;
 
                         card = stacks[newPlace[last]][stacks[newPlace[last]].Count - 1];
                         stacks[newPlace[last]].RemoveAt(stacks[newPlace[last]].Count - 1);
 
-                        // затем в буфер
+                        // then to buffer
                         buffer.Add(card);
                     }
 
-                    // II. переложить countRemember карт с buffer на oldPlace
+                    // II. move countRemember cards from buffer to oldPlace
 
                     for (int i = 0; i < countRemember[last]; i++)
                     {
-                        // сначала удаляем из буфера
+                        // first remove from buffer
                         Card card = buffer[buffer.Count - 1];
                         buffer.RemoveAt(buffer.Count - 1);
 
-                        // затем возвращаем в старое
+                        // then return to old
                         stacks[oldPlace[last]].Add(card);
                     }
                 }
@@ -715,19 +702,19 @@ namespace Kosynka
 
                 if (oldPlace.Count == 0)
                 {
-                    отменитьХодToolStripMenuItem.Enabled = false;
+                    undoMoveToolStripMenuItem.Enabled = false;
                 }
 
                 Invalidate();
             }
         }
 
-        private void подсказкаToolStripMenuItem_Click(object sender, EventArgs e)
+        private void HintToolStripMenuItem_Click(object sender, EventArgs e)
         {
             accentLen = 1;
 
-            // смотрим где что подходит
-            // потом со стека на стек хотим перекладывать (с j на i)
+            // look for suitable moves
+            // then want to move from stack to stack (from j to i)
             for (int j = 9; j >= 0; j--)
                 if (stacks[j].Count > 0)
                     for (int i = 9; i >= 0; i--)
@@ -735,7 +722,7 @@ namespace Kosynka
                         int k = 0;
                         while (k < stacks[j].Count && !stacks[j][k].opened) ++k;
 
-                        if (i != j && stacks[j].Count > 0 && (stacks[i].Count == 0 || stacks[i].Count > 0 && condNorm(stacks[i][stacks[i].Count - 1], stacks[j][k])) && normStack(j))
+                        if (i != j && stacks[j].Count > 0 && (stacks[i].Count == 0 || stacks[i].Count > 0 && CondNorm(stacks[i][stacks[i].Count - 1], stacks[j][k])) && NormStack(j))
                         {
                             accentLen = stacks[j].Count - k;
                             if (stacks[i].Count == 0 && k == 0) continue;
@@ -746,15 +733,15 @@ namespace Kosynka
                         }
                     }
 
-            // идеально не получилось, давайте попроще
+            // didn't work perfectly, let's try simpler
             for (int j = 9; j >= 0; j--)
                 if (stacks[j].Count > 0)
                     for (int i = 9; i >= 0; i--)
                     {
-                        int k = normStackNumber(j);
+                        int k = NormStackNumber(j);
                         //while (k < stacks[j].Count && !stacks[j][k].opened) ++k;
 
-                        if (i != j && stacks[j].Count > 0 && (stacks[i].Count == 0 || stacks[i].Count > 0 && condNorm(stacks[i][stacks[i].Count - 1], stacks[j][k])))
+                        if (i != j && stacks[j].Count > 0 && (stacks[i].Count == 0 || stacks[i].Count > 0 && CondNorm(stacks[i][stacks[i].Count - 1], stacks[j][k])))
                         {
                             accentLen = stacks[j].Count - k;
                             if (stacks[i].Count == 0 && k == 0) continue;
@@ -767,7 +754,7 @@ namespace Kosynka
 
             if (rest.Count > 0)
                 accent = 10;
-            else MessageBox.Show("Ходов нет", "Сообщение");
+            else MessageBox.Show("No moves", "Message");
             accent2 = -1;
             Invalidate();
         }
@@ -777,7 +764,7 @@ namespace Kosynka
             return x1 + (y - y1) * (x1 - x2) / (y1 - y2);
         }
 
-        private void timer3_Tick(object sender, EventArgs e)
+        private void Timer3_Tick(object sender, EventArgs e)
         {
             if (num < 10)
             {
@@ -785,7 +772,7 @@ namespace Kosynka
                 {
                     buffer.Add(rest[0]);
                     x = wField - wOffset - wCard - (quanOfAdds - 1) * wShift;
-                    y = hField - hOffset - hCard;         
+                    y = hField - hOffset - hCard;
                     animation2 = true;
                     if (num == 9)
                         --quanOfAdds;
@@ -794,7 +781,8 @@ namespace Kosynka
                 {
                     y -= 100;
                     x = LinearFunction(y, wField - wOffset - wCard - (quanOfAdds - 1) * wShift, hField - hOffset - hCard, wOffset + (wOffset + wCard) * num, offset + hOffset + hShift * stacks[num].Count);
-                    if (y <= offset + hOffset + hShift * stacks[num].Count){
+                    if (y <= offset + hOffset + hShift * stacks[num].Count)
+                    {
                         stacks[num].Add(rest[0]);
                         rest.RemoveAt(0);
                         buffer.Clear();
@@ -808,31 +796,32 @@ namespace Kosynka
                 timer3.Stop();
                 animation = false;
                 animation2 = false;
-                новаяИграToolStripMenuItem.Enabled = true;
-                отменитьХодToolStripMenuItem.Enabled = returnWas;
-                подсказкаToolStripMenuItem.Enabled = true;
+                newGameToolStripMenuItem.Enabled = true;
+                undoMoveToolStripMenuItem.Enabled = returnWas;
+                hintToolStripMenuItem.Enabled = true;
             }
 
             Invalidate();
         }
 
-        private void timer4_Tick(object sender, EventArgs e)
+        private void Timer4_Tick(object sender, EventArgs e)
         {
-            if (counter < 13){
-                //MessageBox.Show("таймер4");
+            if (counter < 13)
+            {
                 if (!animation2)
                 {
                     buffer.Add(stacks[num][stacks[num].Count - 1]);
-                    stacks[num].RemoveAt(stacks[num].Count - 1);     // забираем карты
+                    stacks[num].RemoveAt(stacks[num].Count - 1);     // take cards
                     x = wOffset + (wOffset + wCard) * num;
-                    y = offset + hOffset + hShift * stacks[num].Count;         
+                    y = offset + hOffset + hShift * stacks[num].Count;
                     animation2 = true;
                 }
                 else
                 {
                     y += 100;
                     x = LinearFunction(y, wOffset + quanOfPiles * wShift, hField - hOffset - hCard, wOffset + (wOffset + wCard) * num, offset + hOffset + hShift * stacks[num].Count);
-                    if (y >= hField - hOffset - hCard){
+                    if (y >= hField - hOffset - hCard)
+                    {
                         naglCard = buffer[0];
                         buffer.Clear();
                         animation2 = false;
@@ -845,19 +834,19 @@ namespace Kosynka
                 timer4.Stop();
                 animation = false;
                 animation2 = false;
-                новаяИграToolStripMenuItem.Enabled = true;
-                подсказкаToolStripMenuItem.Enabled = true;
+                newGameToolStripMenuItem.Enabled = true;
+                hintToolStripMenuItem.Enabled = true;
                 ++quanOfPiles;
                 naglCard = null;
-                openStacksIfPossible();
+                OpenStacksIfPossible();
 
                 if (!win && Win())
                 {
                     timer2.Start();
                     win = true;
                     timer1.Stop();
-                    отменитьХодToolStripMenuItem.Enabled = false;
-                    подсказкаToolStripMenuItem.Enabled = false;
+                    undoMoveToolStripMenuItem.Enabled = false;
+                    hintToolStripMenuItem.Enabled = false;
                 }
             }
 
